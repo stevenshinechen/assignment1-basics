@@ -27,3 +27,14 @@ class Linear(nn.Module):
     def reset_parameters(self):
         reset_weight(self.weight)
 
+class Embedding(nn.Module):
+    def __init__(self, num_embeddings: int, embedding_dim: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super().__init__()
+        self.weight = nn.Parameter(torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype))
+        self.reset_parameters()
+
+    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
+        return self.weight[token_ids]
+
+    def reset_parameters(self):
+        reset_weight(self.weight)
