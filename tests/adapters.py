@@ -32,7 +32,7 @@ def run_linear(
     """
     linear = Linear(in_features=d_in, out_features=d_out)
     linear.load_state_dict({"weight": weights})
-    return linear.forward(in_features)
+    return linear(in_features)
 
 
 def run_embedding(
@@ -55,7 +55,7 @@ def run_embedding(
     """
     embedding = Embedding(num_embeddings=vocab_size, embedding_dim=d_model)
     embedding.load_state_dict({"weight": weights})
-    return embedding.forward(token_ids)
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -387,7 +387,7 @@ def run_rmsnorm(
     """
     rms_norm = RMSNorm(d_model=d_model, eps=eps)
     rms_norm.load_state_dict({"weight": weights})
-    return rms_norm.forward(in_features)
+    return rms_norm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
