@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-from einops import einsum
+from einops import einsum, rearrange
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
@@ -68,6 +68,35 @@ class SwiGLU(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.w2(silu(self.w1(x)) * self.w3(x))
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        super().__init__()
+
+        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k)) # (d_k/2,)
+        positions = torch.arange(max_seq_len, device=device) # (seq_len,)
+        radians = einsum(positions, inv_freq, "seq_len, half_d-> seq_len half_d") # (seq_len, d_k/2) outer product
+        
+        self.register_buffer('cos', torch.cos(radians)) # (seq_len, d_k/2)
+        self.register_buffer('sin', torch.sin(radians)) # (seq_len, d_k/2)
+
+    def forward(
+        self,
+        x: Float[Tensor, "... seq_len d_k"],
+        token_positions: Int[Tensor, "... seq_len"],
+    ) -> Float[Tensor, "... seq_len d_k"]:
+        cos = self.cos[token_positions] # (..., seq_len, d_k/2)
+        sin = self.sin[token_positions] # (..., seq_len, d_k/2)
+
+        x1 = x[..., ::2]  # (..., seq_len, d_k/2)
+        x2 = x[..., 1::2] # (..., seq_len, d_k/2)
+
+        x_rotated_even = x1 * cos - x2 * sin # (..., seq_len, d_k/2)
+        x_rotated_odd = x1 * sin + x2 * cos  # (..., seq_len, d_k/2)
+
+        x_stacked = torch.stack([x_rotated_even, x_rotated_odd], dim=-1) # (..., seq_len, d_k/2, 2)
+        x_rotated = rearrange(x_stacked, "... seq_len half_d two -> ... seq_len (half_d two)")
+        return x_rotated
 
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     x_stable = x - x.max(dim=dim, keepdim=True).values
