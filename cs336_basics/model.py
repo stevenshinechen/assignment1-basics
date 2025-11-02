@@ -2,6 +2,8 @@ import math
 import torch
 import torch.nn as nn
 from einops import einsum
+from jaxtyping import Bool, Float, Int
+from torch import Tensor
 
 def reset_weight(weight: nn.Parameter) -> nn.Parameter:
     d_out, d_in = weight.shape
@@ -71,3 +73,20 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     x_stable = x - x.max(dim=dim, keepdim=True).values
     exp_x = torch.exp(x_stable)
     return exp_x / exp_x.sum(dim=dim, keepdim=True)
+
+def scaled_dot_product_attention(
+    Q: Float[Tensor, " ... queries d_k"],
+    K: Float[Tensor, " ... keys d_k"],
+    V: Float[Tensor, " ... values d_v"],
+    mask: Bool[Tensor, " ... queries keys"] | None = None,
+) -> Float[Tensor, " ... queries d_v"]:
+    d_k = Q.shape[-1]
+    scale_factor = 1 / math.sqrt(d_k)
+    attn_weight = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys") * scale_factor
+
+    if mask is not None:
+        attn_weight.masked_fill_(mask.logical_not(), -float('inf'))
+
+    attn_weight = softmax(attn_weight, dim=-1)
+    attn = einsum(attn_weight, V, "... queries keys, ... keys d_v -> ... queries d_v")
+    return attn
