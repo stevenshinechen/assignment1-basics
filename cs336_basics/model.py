@@ -210,3 +210,55 @@ class MultiheadSelfAttention(nn.Module):
         attn_out = scaled_dot_product_attention(Q, K, V, mask=mask)
         multihead_out = rearrange(attn_out, "... num_heads seq_len d_v -> ... seq_len (num_heads d_v)")
         return self.W_O(multihead_out)
+
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        max_seq_len: int = 8192,
+        rope: RotaryPositionalEmbedding | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.ln1 = RMSNorm(
+            d_model=d_model,
+            device=device,
+            dtype=dtype,
+        )
+        self.attn = MultiheadSelfAttention(
+            d_model=d_model,
+            num_heads=num_heads,
+            max_seq_len=max_seq_len,
+            rope=rope,
+            device=device,
+            dtype=dtype,
+        )
+        self.ln2 = RMSNorm(
+            d_model=d_model,
+            device=device,
+            dtype=dtype,
+        )
+        self.ffn = SwiGLU(
+            d_model=d_model,
+            d_ff=d_ff,
+            device=device,
+            dtype=dtype,
+        )
+    
+    def forward(
+        self,
+        x: Float[Tensor, "... seq_len d_model"],
+        token_positions: Int[Tensor, "... seq_len"],
+    ) -> Float[Tensor, "... seq_len d_model"]:
+        out = self.ln1(x)
+        out = self.attn(out, token_positions)
+        out += x
+        res = out
+
+        out = self.ln2(out)
+        out = self.ffn(out)
+        out += res
+        return out
