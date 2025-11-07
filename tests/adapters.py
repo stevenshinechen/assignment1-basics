@@ -11,7 +11,7 @@ from torch import Tensor
 from einops import rearrange
 
 
-from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, scaled_dot_product_attention, softmax, MultiheadSelfAttention
+from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, scaled_dot_product_attention, softmax, MultiheadSelfAttention
 
 
 def run_linear(
@@ -318,7 +318,28 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    d_k = d_model // num_heads
+    rope = RotaryPositionalEmbedding(
+        theta=theta,
+        d_k=d_k,
+        max_seq_len=max_seq_len,
+    )
+    transformer_block = TransformerBlock(
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        max_seq_len=max_seq_len,
+        rope=rope,
+    )
+    weights["attn.W_QKV.weight"] = rearrange(
+        [weights["attn.q_proj.weight"], weights["attn.k_proj.weight"], weights["attn.v_proj.weight"]],
+        "n d_k d_in -> (n d_k) d_in"
+    )
+    weights["attn.W_O.weight"] = weights["attn.output_proj.weight"]
+    transformer_block.load_state_dict(weights, strict=False)
+    seq_len = in_features.shape[-2]
+    pos = torch.arange(0, seq_len)
+    return transformer_block(in_features, pos)
 
 
 def run_transformer_lm(
