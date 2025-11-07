@@ -120,7 +120,7 @@ def scaled_dot_product_attention(
     attn = einsum(attn_weight, V, "... queries keys, ... keys d_v -> ... queries d_v")
     return attn
 
-class MultiheadSelfAttention(nn.Module):
+class MultiheadSelfAttentionSeparateQKV(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -157,6 +157,48 @@ class MultiheadSelfAttention(nn.Module):
         Q = rearrange(Q, "... seq_len (num_heads d_k) -> ... num_heads seq_len d_k", num_heads=self.num_heads)
         K = rearrange(K, "... seq_len (num_heads d_k) -> ... num_heads seq_len d_k", num_heads=self.num_heads)
         V = rearrange(V, "... seq_len (num_heads d_v) -> ... num_heads seq_len d_v", num_heads=self.num_heads)
+
+        if self.rope is not None:
+            token_pos_repeated = repeat(token_positions, "... seq_len -> ... num_heads seq_len", num_heads=self.num_heads)
+            Q = self.rope(Q, token_pos_repeated)
+            K = self.rope(K, token_pos_repeated)
+
+        mask = self.causal_mask[:seq_len, :seq_len]
+
+        attn_out = scaled_dot_product_attention(Q, K, V, mask=mask)
+        multihead_out = rearrange(attn_out, "... num_heads seq_len d_v -> ... seq_len (num_heads d_v)")
+        return self.W_O(multihead_out)
+
+class MultiheadSelfAttention(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        max_seq_len: int = 8192,
+        rope: RotaryPositionalEmbedding | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        self.rope = rope
+
+        # d_model == num_heads * self.d_k
+        self.W_QKV = Linear(d_model, 3*d_model, device=device, dtype=dtype)
+        self.W_O = Linear(d_model, d_model, device=device, dtype=dtype)
+
+        causal_mask = torch.tril(torch.ones(max_seq_len, max_seq_len, dtype=torch.bool, device=device))
+        self.register_buffer("causal_mask", causal_mask)
+
+    def forward(
+        self,
+        x: Float[Tensor, "... seq_len d_model"],
+        token_positions: Int[Tensor, "... seq_len"],
+    ) -> Float[Tensor, "... seq_len d_model"]:
+        seq_len = token_positions.shape[-1]
+        QKV: Tensor = self.W_QKV(x) # (..., seq_len, 3*d_model)
+        QKV = rearrange(QKV, "... seq_len (three num_heads d_k) -> ... num_heads seq_len (three d_k)", three=3, num_heads=self.num_heads)
+        Q, K, V = QKV.chunk(chunks=3, dim=-1) # (..., seq_len, d_model) each
 
         if self.rope is not None:
             token_pos_repeated = repeat(token_positions, "... seq_len -> ... num_heads seq_len", num_heads=self.num_heads)
