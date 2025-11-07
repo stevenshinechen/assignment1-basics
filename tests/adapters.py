@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 
-from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, scaled_dot_product_attention, softmax
+from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, scaled_dot_product_attention, softmax, MultiheadSelfAttention
 
 
 def run_linear(
@@ -146,7 +146,17 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multihead_self_attn = MultiheadSelfAttention(d_model, num_heads)
+    multihead_self_attn.load_state_dict({
+        "W_Q.weight": q_proj_weight,
+        "W_K.weight": k_proj_weight,
+        "W_V.weight": v_proj_weight,
+        "W_O.weight": o_proj_weight,
+    }, strict=False)
+
+    seq_len = in_features.shape[-2]
+    token_positions = torch.arange(0, seq_len)
+    return multihead_self_attn(in_features, token_positions)
 
 
 def run_multihead_self_attention_with_rope(
