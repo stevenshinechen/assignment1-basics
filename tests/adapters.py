@@ -8,6 +8,7 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
+from einops import rearrange
 
 
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, scaled_dot_product_attention, softmax, MultiheadSelfAttention
@@ -147,12 +148,19 @@ def run_multihead_self_attention(
         implementation with the given QKV projection weights and input features.
     """
     multihead_self_attn = MultiheadSelfAttention(d_model, num_heads)
+
+    qkv_proj_weight = rearrange([q_proj_weight, k_proj_weight, v_proj_weight], "n d_k d_in -> (n d_k) d_in")
     multihead_self_attn.load_state_dict({
-        "W_Q.weight": q_proj_weight,
-        "W_K.weight": k_proj_weight,
-        "W_V.weight": v_proj_weight,
+        "W_QKV.weight": qkv_proj_weight,
         "W_O.weight": o_proj_weight,
     }, strict=False)
+
+    # multihead_self_attn.load_state_dict({
+    #     "W_Q.weight": q_proj_weight,
+    #     "W_K.weight": k_proj_weight,
+    #     "W_V.weight": v_proj_weight,
+    #     "W_O.weight": o_proj_weight,
+    # }, strict=False)
 
     seq_len = in_features.shape[-2]
     token_positions = torch.arange(0, seq_len)
@@ -200,12 +208,19 @@ def run_multihead_self_attention_with_rope(
     rope = RotaryPositionalEmbedding(theta=theta, d_k=d_k, max_seq_len=max_seq_len)
 
     multihead_self_attn = MultiheadSelfAttention(d_model, num_heads, rope=rope)
+
+    qkv_proj_weight = rearrange([q_proj_weight, k_proj_weight, v_proj_weight], "n d_k d_in -> (n d_k) d_in")
     multihead_self_attn.load_state_dict({
-        "W_Q.weight": q_proj_weight,
-        "W_K.weight": k_proj_weight,
-        "W_V.weight": v_proj_weight,
+        "W_QKV.weight": qkv_proj_weight,
         "W_O.weight": o_proj_weight,
     }, strict=False)
+
+    # multihead_self_attn.load_state_dict({
+    #     "W_Q.weight": q_proj_weight,
+    #     "W_K.weight": k_proj_weight,
+    #     "W_V.weight": v_proj_weight,
+    #     "W_O.weight": o_proj_weight,
+    # }, strict=False)
 
     return multihead_self_attn(in_features, token_positions)
 
