@@ -262,3 +262,64 @@ class TransformerBlock(nn.Module):
         out = self.ffn(out)
         out += res
         return out
+
+class TransformerLM(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        vocab_size: int,
+        num_layers: int,
+        max_seq_len: int = 8192,
+        rope: RotaryPositionalEmbedding | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+
+        self.token_embeddings = Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=d_model,
+            device=device,
+            dtype=dtype,
+        )
+        self.layers = nn.ModuleList([
+            TransformerBlock(
+                d_model=d_model,
+                num_heads=num_heads,
+                d_ff=d_ff,
+                max_seq_len=max_seq_len,
+                rope=rope,
+                device=device,
+                dtype=dtype,
+            )
+            for _ in range(num_layers)
+        ])
+        self.ln_final = RMSNorm(
+            d_model=d_model,
+            device=device,
+            dtype=dtype,
+        )
+        self.lm_head = Linear(
+            in_features=d_model,
+            out_features=vocab_size,
+            device=device,
+            dtype=dtype
+        )
+
+    def forward(
+        self,
+        in_indices: Int[Tensor, "batch seq_len"]
+    ) -> Float[Tensor, "batch seq_len vocab_size"]:
+        seq_len = in_indices.shape[-1]
+        token_positions = torch.arange(0, seq_len, device=in_indices.device)
+
+        out = self.token_embeddings(in_indices)
+
+        for transformer_block in self.layers:
+            out = transformer_block(out, token_positions)
+
+        out = self.ln_final(out)
+        out = self.lm_head(out)
+        return out
