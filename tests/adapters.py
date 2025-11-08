@@ -12,6 +12,7 @@ from einops import rearrange
 
 
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
+from cs336_basics.optimizer import AdamW
 
 
 def run_linear(
@@ -560,7 +561,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
