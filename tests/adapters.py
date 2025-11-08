@@ -12,7 +12,7 @@ from einops import rearrange
 
 
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
-from cs336_basics.optimizer import AdamW
+from cs336_basics.optimizer import AdamW, get_lr_cosine_schedule
 
 
 def run_linear(
@@ -589,7 +589,13 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return get_lr_cosine_schedule(
+        it=it,
+        max_learning_rate=max_learning_rate,
+        min_learning_rate=min_learning_rate,
+        warmup_iters=warmup_iters,
+        cosine_cycle_iters=cosine_cycle_iters,
+    )
 
 
 def run_save_checkpoint(
