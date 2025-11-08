@@ -11,7 +11,7 @@ from torch import Tensor
 from einops import rearrange
 
 
-from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, scaled_dot_product_attention, softmax, MultiheadSelfAttention
+from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
 
 
 def run_linear(
@@ -421,7 +421,31 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    d_k = d_model // num_heads
+    rope = RotaryPositionalEmbedding(
+        theta=rope_theta,
+        d_k=d_k,
+        max_seq_len=context_length,
+    )
+    transformer_lm = TransformerLM(
+        vocab_size=vocab_size,
+        max_seq_len=context_length,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        d_model=d_model,
+        d_ff=d_ff,
+        rope=rope,
+    )
+
+    for i in range(num_layers):
+        weights[f"layers.{i}.attn.W_QKV.weight"] = rearrange(
+            [weights[f"layers.{i}.attn.q_proj.weight"], weights[f"layers.{i}.attn.k_proj.weight"], weights[f"layers.{i}.attn.v_proj.weight"]],
+            "n d_k d_in -> (n d_k) d_in"
+        )
+        weights[f"layers.{i}.attn.W_O.weight"] = weights[f"layers.{i}.attn.output_proj.weight"]
+    transformer_lm.load_state_dict(weights, strict=False)
+
+    return transformer_lm(in_indices)
 
 
 def run_rmsnorm(
