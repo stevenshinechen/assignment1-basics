@@ -1,4 +1,5 @@
 import os
+import regex as re
 from typing import BinaryIO
 
 
@@ -88,3 +89,8 @@ def _init_vocab(special_tokens: list[str]) -> dict[int, bytes]:
     for i, special_token in enumerate(special_tokens, len(vocab)):
         vocab[i] = special_token.encode()
     return vocab
+
+
+def _split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
+    pattern = "|".join(map(re.escape, special_tokens))
+    return re.split(pattern, text)
