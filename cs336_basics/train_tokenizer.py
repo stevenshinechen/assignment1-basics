@@ -2,6 +2,9 @@ import os
 from typing import BinaryIO
 
 
+NUM_BYTE_VALUES = 256
+
+
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
@@ -73,3 +76,15 @@ def train_bpe(
               was merged with <token2>.
               The merges are ordered by order of creation.
     """
+
+
+def _init_byte_vocab() -> dict[int, bytes]:
+    byte_vocab = {i: bytes(i) for i in range(NUM_BYTE_VALUES)}
+    return byte_vocab
+
+
+def _init_vocab(special_tokens: list[str]) -> dict[int, bytes]:
+    vocab = _init_byte_vocab()
+    for i, special_token in enumerate(special_tokens, len(vocab)):
+        vocab[i] = special_token.encode()
+    return vocab
