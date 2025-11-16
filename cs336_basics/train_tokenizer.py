@@ -1,9 +1,17 @@
+from collections import Counter
 import os
 import regex as re
 from typing import BinaryIO
+import multiprocessing as mp
 
 
 NUM_BYTE_VALUES = 256
+TINY_STORIES_VAL_PATH = "data/TinyStoriesV2-GPT4-valid.txt"
+PRE_TOKENIZE_PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+TOKENIZER_RE = re.compile(PRE_TOKENIZE_PAT)
+
+END_OF_TEXT = "<|endoftext|>"
+END_OF_TEXT_BYTES = END_OF_TEXT.encode()
 
 
 def find_chunk_boundaries(
@@ -94,3 +102,48 @@ def _init_vocab(special_tokens: list[str]) -> dict[int, bytes]:
 def _split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
     pattern = "|".join(map(re.escape, special_tokens))
     return re.split(pattern, text)
+
+
+def get_chunk_boundaries(filepath: str, desired_num_chunks: int, split_special_token: bytes = END_OF_TEXT_BYTES) -> list[int]:
+    with open(filepath, "rb") as f:
+        boundaries = find_chunk_boundaries(f, desired_num_chunks=desired_num_chunks, split_special_token=split_special_token)
+        return boundaries
+
+
+def read_chunk(file: BinaryIO, start: int, end: int, encoding: str = "utf-8", errors: str = "ignore") -> str:
+    file.seek(start)
+    chunk = file.read(end - start).decode(encoding=encoding, errors=errors)
+    return chunk
+
+
+def get_pretoken_counts(filepath: str, special_tokens: list[str], num_processes: int | None = None) -> Counter[tuple[bytes]]:
+    if num_processes is None:
+        num_processes = mp.cpu_count()
+    boundaries = get_chunk_boundaries(filepath, num_processes)
+    tasks = [(start, end, special_tokens, filepath) for start, end in zip(boundaries[:-1], boundaries[1:])]
+    with mp.Pool(num_processes) as p:
+        counters = p.starmap(process_chunk_boundary, tasks)
+        pretoken_counts = Counter()
+        for counter in counters:
+            pretoken_counts.update(counter)
+        return pretoken_counts
+
+
+def process_chunk_boundary(start: int, end: int, special_tokens: list[str], filepath: str, encoding: str = "utf-8") -> Counter[tuple[bytes]]:
+    counter = Counter()
+
+    with open(filepath, "rb") as f:
+        chunk = read_chunk(f, start, end)
+        subchunks = _split_on_special_tokens(chunk, special_tokens=special_tokens)
+        for subchunk in subchunks:
+            for m in TOKENIZER_RE.finditer(subchunk):
+                pretoken = m.group().encode(encoding)
+                pretoken_tuple = tuple(pretoken)
+                counter[pretoken_tuple] += 1
+
+    return counter
+
+
+if __name__ == "__main__":
+    pretoken_counts = get_pretoken_counts(TINY_STORIES_VAL_PATH, special_tokens=[END_OF_TEXT])
+    print(pretoken_counts)
