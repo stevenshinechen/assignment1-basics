@@ -88,7 +88,7 @@ def train_bpe(
 
 
 def _init_byte_vocab() -> dict[int, bytes]:
-    byte_vocab = {i: bytes(i) for i in range(NUM_BYTE_VALUES)}
+    byte_vocab = {i: bytes([i]) for i in range(NUM_BYTE_VALUES)}
     return byte_vocab
 
 
@@ -138,7 +138,7 @@ def process_chunk_boundary(start: int, end: int, special_tokens: list[str], file
         for subchunk in subchunks:
             for m in TOKENIZER_RE.finditer(subchunk):
                 pretoken = m.group().encode(encoding)
-                pretoken_tuple = tuple(pretoken)
+                pretoken_tuple = tuple(bytes([b]) for b in pretoken)
                 counter[pretoken_tuple] += 1
 
     return counter
