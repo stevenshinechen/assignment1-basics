@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 import os
 import regex as re
 from typing import BinaryIO
@@ -16,6 +16,7 @@ END_OF_TEXT_BYTES = END_OF_TEXT.encode()
 
 ByteTuple = tuple[bytes, ...]
 BytePair = tuple[bytes, bytes]
+PairPositions = dict[BytePair, set[tuple[ByteTuple, int]]]
 
 
 def find_chunk_boundaries(
@@ -76,7 +77,7 @@ def train_bpe_slow(
     while len(vocab) + len(merges) < vocab_size:
         pair_counts = count_byte_pairs(pretoken_counts)
         pair_to_merge = get_byte_pair_to_merge(pair_counts)
-        pretoken_counts = merge_pretoken_counts(
+        pretoken_counts = merge_pretoken_counts_slow(
             pair_to_merge=pair_to_merge,
             pretoken_counts=pretoken_counts,
         )
@@ -87,7 +88,7 @@ def train_bpe_slow(
 
     return vocab, merges
 
-def train_bpe(
+def train_bpe_slow2(
     input_path: str,
     vocab_size: int,
     special_tokens: list[str],
@@ -111,6 +112,26 @@ def train_bpe(
               was merged with <token2>.
               The merges are ordered by order of creation.
     """
+    pretoken_counts = get_pretoken_counts(input_path, special_tokens=special_tokens)
+    pair_counts, pair_pretokens = count_byte_pairs_slow2(pretoken_counts)
+
+    merges = []
+    vocab = _init_vocab(special_tokens)
+    while len(vocab) + len(merges) < vocab_size:
+        pair_counts, pair_pretokens = count_byte_pairs_slow2(pretoken_counts)
+        pair_to_merge = get_byte_pair_to_merge(pair_counts)
+        merge_pretoken_counts_slow2(
+            pair_to_merge=pair_to_merge,
+            pretoken_counts=pretoken_counts,
+            pair_counts=pair_counts,
+            pair_pretokens=pair_pretokens,
+        )
+        merges.append(pair_to_merge)
+    
+    for i, (m1, m2) in enumerate(merges, len(vocab)):
+        vocab[i] = m1 + m2
+
+    return vocab, merges
 
 
 def _init_byte_vocab() -> dict[int, bytes]:
@@ -180,13 +201,25 @@ def count_byte_pairs(pretoken_counts: Counter[ByteTuple]) -> Counter[BytePair]:
     
     return pair_counts
 
+def count_byte_pairs_slow2(pretoken_counts: Counter[ByteTuple]) -> tuple[Counter[BytePair], dict[BytePair, set]]:
+    pair_counts = Counter()
+    pair_pretokens = defaultdict(set)
+
+    for s, cnt in pretoken_counts.items():
+        for i in range(len(s) - 1):
+            pair = (s[i], s[i+1])
+            pair_counts[pair] += cnt
+            pair_pretokens[pair].add(s)
+    
+    return pair_counts, pair_pretokens
+
 
 def get_byte_pair_to_merge(byte_pair_counts: Counter[BytePair]) -> BytePair:
     pair_to_merge, _ = max(byte_pair_counts.items(), key=lambda bp: (bp[1], bp[0]))
     return pair_to_merge
 
 
-def merge_pretoken_counts(pair_to_merge: BytePair, pretoken_counts: Counter[ByteTuple]) -> Counter[ByteTuple]:
+def merge_pretoken_counts_slow(pair_to_merge: BytePair, pretoken_counts: Counter[ByteTuple]) -> Counter[ByteTuple]:
     merged_pretoken_counts = Counter()
     for s, v in pretoken_counts.items():
         merged = []
@@ -203,10 +236,38 @@ def merge_pretoken_counts(pair_to_merge: BytePair, pretoken_counts: Counter[Byte
     
     return merged_pretoken_counts
 
+def merge_pretoken_counts_slow2(pair_to_merge: BytePair, pretoken_counts: Counter, pair_counts: Counter[BytePair], pair_pretokens: PairPositions):
+    new_pretokens = set()
+    merged_pair = pair_to_merge[0] + pair_to_merge[1]
+    for pretoken in pair_pretokens[pair_to_merge]:
+        cnt = pretoken_counts[pretoken]
+        i = 0
+        new_pretoken = []
+        while i < len(pretoken):
+            if i + 1 < len(pretoken) and pretoken[i:i+2] == pair_to_merge:
+                new_pretoken.append(merged_pair)
+                pair_counts[pretoken[i:i+2]] -= cnt
+                if i > 0:
+                    pair_counts[(pretoken[i-1], pretoken[i])] -= cnt
+                    pair_counts[(pretoken[i-1], merged_pair)] += cnt
+                if i + 2 < len(pretoken):
+                    pair_counts[(pretoken[i+1], pretoken[i+2])] -= cnt
+                    pair_counts[(merged_pair, pretoken[i+2])] += cnt
+                i += 2
+            else:
+                new_pretoken.append(pretoken[i])
+                i += 1
+        new_pretoken = tuple(new_pretoken)
+        pretoken_counts[new_pretoken] = cnt
+        del pretoken_counts[pretoken]
+        new_pretokens.add(new_pretoken)
+    
+    del pair_pretokens[pair_to_merge]
+    pair_pretokens[merged_pair] = new_pretokens
 
 if __name__ == "__main__":
     example_path = "data/example.txt"
-    vocab, merges = train_bpe_slow(
+    vocab, merges = train_bpe_slow2(
         example_path,
         vocab_size=263,
         special_tokens=[END_OF_TEXT]
