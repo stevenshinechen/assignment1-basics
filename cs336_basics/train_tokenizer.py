@@ -205,5 +205,11 @@ def merge_pretoken_counts(pair_to_merge: BytePair, pretoken_counts: Counter[Byte
 
 
 if __name__ == "__main__":
-    pretoken_counts = get_pretoken_counts(TINY_STORIES_VAL_PATH, special_tokens=[END_OF_TEXT])
-    print(pretoken_counts)
+    example_path = "data/example.txt"
+    vocab, merges = train_bpe_slow(
+        example_path,
+        vocab_size=263,
+        special_tokens=[END_OF_TEXT]
+    )
+
+    print(f"{vocab=}\n{merges=}")
