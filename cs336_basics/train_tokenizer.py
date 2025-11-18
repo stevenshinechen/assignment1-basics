@@ -14,6 +14,10 @@ END_OF_TEXT = "<|endoftext|>"
 END_OF_TEXT_BYTES = END_OF_TEXT.encode()
 
 
+ByteTuple = tuple[bytes, ...]
+BytePair = tuple[bytes, bytes]
+
+
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
@@ -60,6 +64,28 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
+def train_bpe_slow(
+    input_path: str,
+    vocab_size: int,
+    special_tokens: list[str],
+) -> tuple[dict[int, bytes], list[BytePair]]:
+    pretoken_counts = get_pretoken_counts(input_path, special_tokens=special_tokens)
+
+    merges = []
+    vocab = _init_vocab(special_tokens)
+    while len(vocab) + len(merges) < vocab_size:
+        pair_counts = count_byte_pairs(pretoken_counts)
+        pair_to_merge = get_byte_pair_to_merge(pair_counts)
+        pretoken_counts = merge_pretoken_counts(
+            pair_to_merge=pair_to_merge,
+            pretoken_counts=pretoken_counts,
+        )
+        merges.append(pair_to_merge)
+    
+    for i, (m1, m2) in enumerate(merges, len(vocab)):
+        vocab[i] = m1 + m2
+
+    return vocab, merges
 
 def train_bpe(
     input_path: str,
@@ -142,6 +168,40 @@ def process_chunk_boundary(start: int, end: int, special_tokens: list[str], file
                 counter[pretoken_tuple] += 1
 
     return counter
+
+
+def count_byte_pairs(pretoken_counts: Counter[ByteTuple]) -> Counter[BytePair]:
+    pair_counts = Counter()
+
+    for s, cnt in pretoken_counts.items():
+        for i in range(len(s) - 1):
+            pair = (s[i], s[i+1])
+            pair_counts[pair] += cnt
+    
+    return pair_counts
+
+
+def get_byte_pair_to_merge(byte_pair_counts: Counter[BytePair]) -> BytePair:
+    pair_to_merge, _ = max(byte_pair_counts.items(), key=lambda bp: (bp[1], bp[0]))
+    return pair_to_merge
+
+
+def merge_pretoken_counts(pair_to_merge: BytePair, pretoken_counts: Counter[ByteTuple]) -> Counter[ByteTuple]:
+    merged_pretoken_counts = Counter()
+    for s, v in pretoken_counts.items():
+        merged = []
+        i = 0
+        while i < len(s):
+            if i < len(s) - 1 and s[i:i+2] == pair_to_merge:
+                merged.append(s[i] + s[i+1])
+                i += 2
+            else:
+                merged.append(s[i])
+                i += 1
+        merged = tuple(merged)
+        merged_pretoken_counts[merged] = v
+    
+    return merged_pretoken_counts
 
 
 if __name__ == "__main__":
