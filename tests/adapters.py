@@ -14,6 +14,7 @@ from einops import rearrange
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
 from cs336_basics.optimizer import AdamW, get_lr_cosine_schedule
 from cs336_basics.serialization import load_checkpoint, save_checkpoint
+from cs336_basics.train_tokenizer import train_bpe_slow
 
 
 def run_linear(
@@ -689,4 +690,8 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    return train_bpe_slow(
+        input_path=input_path,
+        vocab_size=vocab_size,
+        special_tokens=special_tokens,
+    )
