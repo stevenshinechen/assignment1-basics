@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 import os
+import timeit
 import regex as re
 from typing import BinaryIO, Iterable
 import multiprocessing as mp
@@ -238,6 +239,14 @@ def main():
         special_tokens=[END_OF_TEXT]
     )
 
+def time_bpe(repeat: int = 3, number: int = 5):
+    times = timeit.repeat(main, repeat=repeat, number=number)
+    times = [time / number for time in times]
+    print(f"{times=}\n{min(times)=}s")
+
+# if __name__ == "__main__":
+#     import cProfile
+#     cProfile.run("main()", sort="tottime")
+
 if __name__ == "__main__":
-    import cProfile
-    cProfile.run("main()", sort="tottime")
+    time_bpe()
