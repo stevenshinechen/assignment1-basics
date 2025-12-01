@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+import heapq
 import os
 import timeit
 import regex as re
@@ -18,6 +19,19 @@ END_OF_TEXT_BYTES = END_OF_TEXT.encode()
 ByteTuple = tuple[bytes, ...]
 BytePair = tuple[bytes, bytes]
 PairPositions = dict[BytePair, set[tuple[ByteTuple, int]]]
+
+class ReverseLexOrderPair:
+    """
+    Encapsulates (bytes, bytes) so that in a min-heap, the "largest in normal lex order"
+    is treated as the smallest. Ensures that tie frequencies pop in reverse lex order.
+    """
+
+    def __init__(self, pair: tuple[bytes, bytes]):
+        self.pair = pair
+
+    def __lt__(self, other: "ReverseLexOrderPair") -> bool:
+        # Invert normal order: self < other if self is > other (so larger lex sorts first).
+        return self.pair > other.pair
 
 
 def find_chunk_boundaries(
@@ -96,19 +110,44 @@ def train_bpe(
 
     merges = []
     vocab = _init_vocab(special_tokens)
-    while len(vocab) + len(merges) < vocab_size:
-        pair_to_merge = get_byte_pair_to_merge(pair_counts)
-        merge_pretoken_counts(
+
+    heap = []
+    for pair, cnt in pair_counts.items():
+        heapq.heappush(heap, (-cnt, ReverseLexOrderPair(pair), pair))
+    
+    len_initial_vocab = len(vocab)
+    for i in range(len_initial_vocab, vocab_size):
+        while heap:
+            neg_cnt, _, pair = heapq.heappop(heap)
+            cnt = -neg_cnt
+            if pair_counts[pair] == cnt:
+                # the count is valid, not stale
+                pair_to_merge = pair
+                break
+            if pair_counts[pair] > 0:
+                # count is stale, update the count on the heap
+                # The count changed after previous merges
+                heapq.heappush(heap, (-pair_counts[pair], ReverseLexOrderPair(pair), pair))
+        else:
+            break
+    
+        if pair_counts[pair_to_merge] == 0:
+            break
+
+        # pair_to_merge = get_byte_pair_to_merge(pair_counts)
+        changed_pairs = merge_pretoken_counts(
             pair_to_merge=pair_to_merge,
             pretoken_counts=pretoken_counts,
             pair_counts=pair_counts,
             pair_pretokens=pair_pretokens,
         )
+        vocab[i] = pair_to_merge[0] + pair_to_merge[1]
         merges.append(pair_to_merge)
-    
-    for i, (m1, m2) in enumerate(merges, len(vocab)):
-        vocab[i] = m1 + m2
 
+        for cp in changed_pairs:
+            if pair_counts[cp] > 0:
+                heapq.heappush(heap, (-pair_counts[cp], ReverseLexOrderPair(cp), cp))
+    
     return vocab, merges
 
 
@@ -213,6 +252,7 @@ def merge_pretoken_counts(
     pair_pretokens: dict[BytePair, set[ByteTuple]]
 ):
     pretokens_with_pair = list(pair_pretokens[pair_to_merge])
+    changed_pairs = set()
 
     for pretoken in pretokens_with_pair:
         cnt = pretoken_counts.pop(pretoken)
@@ -220,16 +260,19 @@ def merge_pretoken_counts(
         for old_pair in adjacent_pairs(pretoken):
             pair_counts[old_pair] -= cnt
             pair_pretokens[old_pair].discard(pretoken)
+            changed_pairs.add(old_pair)
 
         new_pretoken = merge_pretoken(pretoken, pair_to_merge)
 
         for new_pair in adjacent_pairs(new_pretoken):
             pair_counts[new_pair] += cnt
             pair_pretokens[new_pair].add(new_pretoken)
+            changed_pairs.add(new_pair)
 
         pretoken_counts[new_pretoken] = cnt
 
     del pair_pretokens[pair_to_merge]
+    return changed_pairs
 
 def main():
     example_path = "tests/fixtures/tinystories_sample_5M.txt"
