@@ -1,10 +1,13 @@
 from collections import Counter, defaultdict
 import heapq
 import os
+import pickle
 import timeit
 import regex as re
 from typing import BinaryIO, Iterable
 import multiprocessing as mp
+
+from tqdm import tqdm
 
 
 NUM_BYTE_VALUES = 256
@@ -81,6 +84,19 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
+def save_obj(obj, path: str):
+    with open(path, "wb") as f:
+        pickle.dump(obj, f)
+
+
+def save_vocab(vocab: list[BytePair], path: str = "vocab.pkl"):
+    save_obj(vocab, path)
+
+
+def save_merges(merges: list[BytePair], path: str = "merges.pkl"):
+    save_obj(merges, path)
+
+
 def train_bpe(
     input_path: str,
     vocab_size: int,
@@ -116,7 +132,7 @@ def train_bpe(
         heapq.heappush(heap, (-cnt, ReverseLexOrderPair(pair), pair))
     
     len_initial_vocab = len(vocab)
-    for i in range(len_initial_vocab, vocab_size):
+    for i in tqdm(range(len_initial_vocab, vocab_size)):
         while heap:
             neg_cnt, _, pair = heapq.heappop(heap)
             cnt = -neg_cnt
