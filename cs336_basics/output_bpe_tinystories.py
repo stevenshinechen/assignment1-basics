@@ -6,7 +6,8 @@ def get_longest_token(vocab: dict[int, bytes]) -> bytes:
 
 
 if __name__ == "__main__":
-    vocab = load_obj("vocab.pkl")
-    merges = load_obj("merges.pkl")
+    dir = "bpe_tinystories_output"
+    vocab = load_obj(f"{dir}/vocab.pkl")
+    merges = load_obj(f"{dir}/merges.pkl")
     longest_token = get_longest_token(vocab)
     print(longest_token)
