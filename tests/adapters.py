@@ -12,7 +12,7 @@ from einops import rearrange
 
 
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
-from cs336_basics.nn_utils import cross_entropy
+from cs336_basics.nn_utils import cross_entropy, gradient_clipping
 from cs336_basics.optimizer import AdamW, get_lr_cosine_schedule
 from cs336_basics.serialization import load_checkpoint, save_checkpoint
 from cs336_basics.train_tokenizer import train_bpe
@@ -557,7 +557,7 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
