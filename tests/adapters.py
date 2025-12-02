@@ -12,6 +12,7 @@ from einops import rearrange
 
 
 from cs336_basics.model import Embedding, Linear, RMSNorm, RotaryPositionalEmbedding, SwiGLU, TransformerBlock, TransformerLM, scaled_dot_product_attention, softmax, MultiheadSelfAttention
+from cs336_basics.nn_utils import cross_entropy
 from cs336_basics.optimizer import AdamW, get_lr_cosine_schedule
 from cs336_basics.serialization import load_checkpoint, save_checkpoint
 from cs336_basics.train_tokenizer import train_bpe
@@ -544,7 +545,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
