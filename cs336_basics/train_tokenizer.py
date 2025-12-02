@@ -89,7 +89,12 @@ def save_obj(obj, path: str):
         pickle.dump(obj, f)
 
 
-def save_vocab(vocab: list[BytePair], path: str = "vocab.pkl"):
+def load_obj(path: str):
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def save_vocab(vocab: dict[int, bytes], path: str = "vocab.pkl"):
     save_obj(vocab, path)
 
 
